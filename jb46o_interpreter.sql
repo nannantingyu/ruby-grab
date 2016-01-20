@@ -24,7 +24,7 @@ CREATE TABLE `jb46o_interpreter` (
   `datanameid` int(10) NOT NULL,
   `dataid` int(10) NOT NULL,
   `title` varchar(255) DEFAULT NULL,
-  `nextpubDate` varchar(32) DEFAULT NULL,
+  `nextpubdate` varchar(32) DEFAULT NULL,
   `dataagent` varchar(255) DEFAULT NULL,
   `frequency` varchar(32) DEFAULT NULL,
   `statistic` varchar(255) DEFAULT NULL,

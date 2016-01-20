@@ -2,6 +2,7 @@ require 'date'
 require 'nokogiri'
 require 'net/http'
 require 'json'
+require 'mysql2'
 
 Interpreter = Struct.new(:title, :nextPubDate, :dataAgent, :frequency, :statistic, :dataEffect, :dataDefinition, :concernReason)
 
@@ -91,3 +92,18 @@ inter.each do |data|
 end
 
 getGraphDatas
+
+def checkExsit(date)
+	client = Mysql2:Client.new(
+		:host => "localhost",
+		:username => "root",
+		:password => "abc123",
+		:database => "91jin"
+	)
+
+	result = client.query("select * from jb46o_finance_data")
+	if resule.length > 0
+		return true
+	else
+		return false
+end
