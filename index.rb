@@ -1,3 +1,4 @@
+#coding: utf-8 
 require 'rubygems'
 require 'nokogiri'
 require 'open-uri'
@@ -112,12 +113,16 @@ def crawler(start)
 					setsql("insert into jb46o_finance_data values(null,'"+start.strftime("%Y%m%d")+"','"+f_data.time+"','"+f_data.region+"','"+f_data.quota+"','"+f_data.weight+"','"+f_data.former_value+"','"+f_data.predict_value+"','"+f_data.public_value+"','"+influence+"',"+params["datanameid"]+","+params["dataid"]+")")
 				else
 					#更新经济数据
-					setsql("update jb46o_finance_data set time='#{f_data.time}', region='#{f_data.region}', quota='#{f_data.quota}',weight='#{f_data.weight}',former_value='#{f_data.former_value}',predict_value='#{f_data.predict_value}',public_value='#{f_data.public_value}',influence='#{influence}' where datanameid=#{params['datanameid']} and dataid=#{params['dataid']});")
-					#插入解读
-					if checkExits(Hash["datanameid"=>params["datanameid"], "dataid"=>params["dataid"]], "jb46o_interpreter") < 1
-						interpreter = getInterprete params["dataid"]
-						setsql("insert into jb46o_interpreter values(null, " + params["datanameid"] + "," + params["dataid"] + ",'" + interpreter.title + "','" + interpreter.nextPubDate + "','" + interpreter.dataAgent + "','" + interpreter.frequency + "','" + interpreter.statistic + "','" + interpreter.dataEffect + "','" + interpreter.dataDefinition + "','" + interpreter.concernReason + "','" + getGraphDatas(params["datanameid"]) + "');")
-					end
+					setsql("update jb46o_finance_data set time='#{f_data.time}', region='#{f_data.region}', quota='#{f_data.quota}',weight='#{f_data.weight}',former_value='#{f_data.former_value}',predict_value='#{f_data.predict_value}',public_value='#{f_data.public_value}',influence='#{influence}' where datanameid=#{params['datanameid']} and dataid=#{params['dataid']};")
+				end
+
+				#插入解读
+				interpreter = getInterprete params["dataid"]
+				# puts interpreter.dataDefinition
+				if checkExits(Hash["datanameid"=>params["datanameid"], "dataid"=>params["dataid"]], "jb46o_interpreter") < 1
+					setsql("insert into jb46o_interpreter values(null, " + params["datanameid"] + "," + params["dataid"] + ",'" + interpreter.title + "','" + interpreter.nextPubDate + "','" + interpreter.dataAgent + "','" + interpreter.frequency + "','" + interpreter.statistic + "','" + interpreter.dataEffect + "','" + interpreter.dataDefinition + "','" + interpreter.concernReason + "','" + getGraphDatas(params["datanameid"]) + "');")
+				else
+					setsql("update jb46o_interpreter set title='#{interpreter.title}', nextPubDate='#{interpreter.nextPubDate}', dataAgent='#{interpreter.dataAgent}', frequency='#{interpreter.frequency}', statistic='#{interpreter.statistic}', dataeffect='#{interpreter.dataEffect}', datadefinition='#{interpreter.dataDefinition}', concernreason='#{interpreter.concernReason}', graphdata='#{getGraphDatas(params["datanameid"])}' where datanameid=#{params['datanameid']} and dataid=#{params['dataid']};")
 				end
 			end
 		end
@@ -212,10 +217,15 @@ def getInterprete(dataid)
 		statistic = content[3].inner_text.to_s
 		statistic = statistic[5, statistic.length]
 
-		datas = page.css("div[@class='cjrl_jdnr']")
-		dataEffect = datas[0].text
-		dataDefinition = datas[1].text
-		concernReason = datas[2].text
+		#数据影响中有特殊字符(<, >), 使用正则匹配
+		regex = /\<div class="cjrl_jdnr"\>(.*?)\<\/div\>/
+		str = regex.match(interprete.to_s)
+
+		datas = interprete.scan(regex)
+
+		dataEffect = datas.at(0)?datas.at(0).at(0).force_encoding("utf-8"):""
+		dataDefinition = datas.at(1)?datas.at(1).at(0).force_encoding("utf-8"):""
+		concernReason = datas.at(2)?datas.at(2).at(0).force_encoding("utf-8"):""
 
 		return Interpreter.new(title, nextPubDate, dataAgent, frequency, statistic, dataEffect, dataDefinition, concernReason)
 	end
