@@ -29,6 +29,7 @@ CREATE TABLE `jb46o_finance_data` (
   `former_value` varchar(400) DEFAULT NULL,
   `predict_value` varchar(400) DEFAULT NULL,
   `public_value` varchar(400) DEFAULT NULL,
+  `influnce` varchar(20) DEFAULT '',
   `datanameid` int(10) NOT NULL,
   `dataid` int(10) NOT NULL,
   PRIMARY KEY (`id`)

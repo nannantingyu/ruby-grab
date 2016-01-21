@@ -6,6 +6,21 @@ require 'net/http'
 require 'json'
 require "mysql2"
 
+def getInfluence(page, cls)
+	arr = []
+	table = page.css("table div[@class='trend "+cls+"']")
+	table.each do |tb|
+		path = tb.path
+		path = path[0, path.rindex("table") + 5]
+		tblikong2 = page.xpath(path)
+		tds = tblikong2.css("td")
+		arr.push(tds[2].text.to_s.strip)
+	end
+
+	return arr
+end
+
+#获取日历页数据
 PAGE_URL = "http://rili.jin10.com/index.php"
 
 FinanceData     = Struct.new(:time, :region, :quota, :weight, :former_value, :predict_value, :public_value, :interprete)
@@ -27,6 +42,18 @@ def setsql(sql)
 end
  
 def crawler(start)
+
+	#获取首页的影响
+	pageIndex = Nokogiri::HTML(open("http://www.jin10.com")) do |config|
+		config.noblanks.strict.nonet
+	end
+
+	liduo = getInfluence(pageIndex, "liduo")
+	liduo2 = getInfluence(pageIndex, "liduo2")
+	likong = getInfluence(pageIndex, "likong")
+	likong2 = getInfluence(pageIndex, "likong2")
+	wuyingxiang = getInfluence(pageIndex, "wuyingxiang")
+	wuyingxiang2 = getInfluence(pageIndex, "wuyingxiang2")
 
 	url = PAGE_URL+"?date="+start.strftime("%Y%m%d")
 
@@ -60,13 +87,32 @@ def crawler(start)
 					f_data = FinanceData.new(pre_time, pre_region, colums[0].text, colums[1].css("img")[0]['src'], colums[2].text, colums[3].text, colums[4].text, colums[5].css("a")[0]['href'])
 				end
 
+				title = f_data.quota.gsub(/\s/, "")
+				#根据指标名称获取影响
+				influence = ""
+				if liduo.index(title) != nil
+					influence = "liduo"
+				elsif liduo2.index(title) != nil
+					influence = "liduo2"
+				elsif likong.index(title) != nil
+					influence = "likong"
+				elsif likong2.index(title) != nil
+					influence = "likong2"
+				elsif wuyingxiang.index(title) != nil
+					influence = "wuyingxiang"
+				elsif wuyingxiang2.index(title) != nil
+					influence = "wuyingxiang2"
+				end
+
 				params = getParam(f_data.interprete)
 
 				# setsql("delete from jb46o_interpreter where dataid=" + params["dataid"] + " and datanameid=" + params["datanameid"])
 				if checkExits(Hash["datanameid"=>params["datanameid"], "dataid"=>params["dataid"]], "jb46o_finance_data") < 1
 					#插入经济数据
-					setsql("insert into jb46o_finance_data values(null,'"+start.strftime("%Y%m%d")+"','"+f_data.time+"','"+f_data.region+"','"+f_data.quota+"','"+f_data.weight+"','"+f_data.former_value+"','"+f_data.predict_value+"','"+f_data.public_value+"',"+params["datanameid"]+", "+params["dataid"]+")")
-
+					setsql("insert into jb46o_finance_data values(null,'"+start.strftime("%Y%m%d")+"','"+f_data.time+"','"+f_data.region+"','"+f_data.quota+"','"+f_data.weight+"','"+f_data.former_value+"','"+f_data.predict_value+"','"+f_data.public_value+"','"+influence+"',"+params["datanameid"]+","+params["dataid"]+")")
+				else
+					#更新经济数据
+					setsql("update jb46o_finance_data set time='#{f_data.time}', region='#{f_data.region}', quota='#{f_data.quota}',weight='#{f_data.weight}',former_value='#{f_data.former_value}',predict_value='#{f_data.predict_value}',public_value='#{f_data.public_value}',influence='#{influence}' where datanameid=#{params['datanameid']} and dataid=#{params['dataid']});")
 					#插入解读
 					if checkExits(Hash["datanameid"=>params["datanameid"], "dataid"=>params["dataid"]], "jb46o_interpreter") < 1
 						interpreter = getInterprete params["dataid"]
@@ -105,7 +151,7 @@ def crawler(start)
 	end
 end
 
-#get parameters from url
+#获取URL中的参数
 def getParam(url)
 	parr = url.split("?")
 	paramStr = ""
