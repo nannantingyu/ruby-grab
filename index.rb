@@ -27,15 +27,15 @@ PAGE_URL = "http://rili.jin10.com/index.php"
 FinanceData     = Struct.new(:time, :region, :quota, :weight, :former_value, :predict_value, :public_value, :interprete)
 FinanceEvent    = Struct.new(:time, :region, :city, :weight, :event)
 MarketHoliday   = Struct.new(:time, :region, :market, :holiday, :plan)
-Interpreter = Struct.new(:title, :nextPubDate, :dataAgent, :frequency, :statistic, :dataEffect, :dataDefinition, :concernReason)
+Interpreter = Struct.new(:title, :nextPubDate, :dataAgent, :frequency, :statistic, :dataEffect, :dataDefinition, :concernReason, :graphData, :graphTitle)
 
 #连接数据库本机：用户名：root 密码：sa 数据库：makedish 端口：3306  
 def setsql(sql)
 	client = Mysql2::Client.new(
-		:host => "localhost",
+		:host => "192.168.99.199",
 		:username => "root",
-		:password => "abc123",
-		:database => "91jin",
+		:password => "123456",
+		:database => "cjrl",
 		:encoding => "utf8"
 	)
 
@@ -105,24 +105,24 @@ def crawler(start)
 					influence = "wuyingxiang2"
 				end
 
-				params = getParam(f_data.interprete)
+				dataid = /.*\/(\d+)/.match(f_data.interprete)[1]
 
 				# setsql("delete from jb46o_interpreter where dataid=" + params["dataid"] + " and datanameid=" + params["datanameid"])
-				if checkExits(Hash["datanameid"=>params["datanameid"], "dataid"=>params["dataid"]], "jb46o_finance_data") < 1
+				if checkExits(Hash["dataid"=>dataid], "jb46o_finance_data") < 1
 					#插入经济数据
-					setsql("insert into jb46o_finance_data values(null,'"+start.strftime("%Y%m%d")+"','"+f_data.time+"','"+f_data.region+"','"+f_data.quota+"','"+f_data.weight+"','"+f_data.former_value+"','"+f_data.predict_value+"','"+f_data.public_value+"','"+influence+"',"+params["datanameid"]+","+params["dataid"]+")")
+					setsql("insert into jb46o_finance_data(dataid, date, time, region, quota, weight, former_value, predict_value, public_value, influnce) values("+dataid+",'"+start.strftime("%Y%m%d")+"','"+f_data.time+"','"+f_data.region+"','"+f_data.quota+"','"+f_data.weight+"','"+f_data.former_value+"','"+f_data.predict_value+"','"+f_data.public_value+"','"+influence+"'"+")")
 				else
 					#更新经济数据
-					setsql("update jb46o_finance_data set time='#{f_data.time}', region='#{f_data.region}', quota='#{f_data.quota}',weight='#{f_data.weight}',former_value='#{f_data.former_value}',predict_value='#{f_data.predict_value}',public_value='#{f_data.public_value}',influence='#{influence}' where datanameid=#{params['datanameid']} and dataid=#{params['dataid']};")
+					setsql("update jb46o_finance_data set time='#{f_data.time}', region='#{f_data.region}', quota='#{f_data.quota}',weight='#{f_data.weight}',former_value='#{f_data.former_value}',predict_value='#{f_data.predict_value}',public_value='#{f_data.public_value}',influnce='#{influence}' where dataid=#{dataid};")
 				end
 
 				#插入解读
-				interpreter = getInterprete params["dataid"]
+				interpreter = getInterprete(dataid)
 				# puts interpreter.dataDefinition
-				if checkExits(Hash["datanameid"=>params["datanameid"], "dataid"=>params["dataid"]], "jb46o_interpreter") < 1
-					setsql("insert into jb46o_interpreter values(null, " + params["datanameid"] + "," + params["dataid"] + ",'" + interpreter.title + "','" + interpreter.nextPubDate + "','" + interpreter.dataAgent + "','" + interpreter.frequency + "','" + interpreter.statistic + "','" + interpreter.dataEffect + "','" + interpreter.dataDefinition + "','" + interpreter.concernReason + "','" + getGraphDatas(params["datanameid"]) + "');")
+				if checkExits(Hash["dataid"=>dataid], "jb46o_interpreter") < 1
+					setsql("insert into jb46o_interpreter values(null, " << dataid.to_s << ",'" << interpreter.title.to_s << "','" << interpreter.nextPubDate.to_s << "','" << interpreter.dataAgent.to_s << "','" << interpreter.frequency.to_s << "','" << interpreter.statistic.to_s << "','" << interpreter.dataEffect << "','" << interpreter.dataDefinition << "','" << interpreter.concernReason << "','" << interpreter.graphData.to_s << "','" << interpreter.graphTitle << "');")
 				else
-					setsql("update jb46o_interpreter set title='#{interpreter.title}', nextPubDate='#{interpreter.nextPubDate}', dataAgent='#{interpreter.dataAgent}', frequency='#{interpreter.frequency}', statistic='#{interpreter.statistic}', dataeffect='#{interpreter.dataEffect}', datadefinition='#{interpreter.dataDefinition}', concernreason='#{interpreter.concernReason}', graphdata='#{getGraphDatas(params["datanameid"])}' where datanameid=#{params['datanameid']} and dataid=#{params['dataid']};")
+					setsql("update jb46o_interpreter set title='#{interpreter.title}', nextPubDate='#{interpreter.nextPubDate}', dataAgent='#{interpreter.dataAgent}', frequency='#{interpreter.frequency}', statistic='#{interpreter.statistic}', dataeffect='#{interpreter.dataEffect}', datadefinition='#{interpreter.dataDefinition}', concernreason='#{interpreter.concernReason}', graphdata='#{interpreter.graphData}', graphtitle='#{interpreter.graphTitle}' where dataid=#{dataid};")
 				end
 			end
 		end
@@ -156,28 +156,6 @@ def crawler(start)
 	end
 end
 
-#获取URL中的参数
-def getParam(url)
-	parr = url.split("?")
-	paramStr = ""
-	if parr[1]
-		paramStr = parr[1]
-	end
-
-	if paramStr != ""
-		params = Hash.new("params")
-		pas = paramStr.split("&")
-		pas.each do |param|
-			pa = param.split("=")
-			params[pa[0]] = pa[1]
-		end
-
-		return params
-	else
-		return nil
-	end
-end
-
 #get now timestamp
 def getTimestamp
 	now = Time.now
@@ -186,62 +164,48 @@ end
 
 #获取解读数据
 def getInterprete(dataid)
-	url = URI.parse('http://rili.jin10.com/jieduData.php')
-	interprete = ''
-
-	Net::HTTP.start(url.host, url.port) do |http|
-		req = Net::HTTP::Post.new(url.path)
-		req.set_form_data({ 'dataid' => dataid, 'datetime' => getTimestamp })
-		interprete = http.request(req).body
+	pageIndex = Nokogiri::HTML(open("http://rili.jin10.com/jiedu/#{dataid}")) do |config|
+		config.noblanks.strict.nonet
 	end
 
-	if interprete != ''
-		page = Nokogiri::HTML(interprete) do |config|
-			config.noblanks.strict.nonet
-		end
+	regex = /var\s+dataJson\s+=\s+'(.+)';/
+	str = regex.match(pageIndex.to_s)
 
-		title = page.css("[@class='cjrl_jdtop']").text
-		content = page.css("div[@class='cjrl_jdyh'] ul li")
-		nextPubDate = content[0].css("span")[1]?content[0].css("span")[1].text : ''
-		dataAgent = content[1].css("span")[1]?content[1].css("span")[1].text : ''
-		frequency = content[2].css("span")[1]?content[2].css("span")[1].text : ''
-		statistic = content[3].css("span")[1]?content[3].css("span")[1].text : ''
+	graphData = JSON.parse(str[1])
 
-		# puts title, nextPubDate, dataAgent, frequency, statistic
-		dataAgent = content[1].inner_text.to_s
-		dataAgent = dataAgent[7, dataAgent.length]
+	graphtitleReg = /var\s+mytitle\s+=\s+"(.*)"/
+	graphtitle = graphtitleReg.match(pageIndex.to_s)[1]
 
-		frequency = content[2].inner_text.to_s
-		frequency = frequency[5, frequency.length]
+	page = pageIndex.css("div[@id='nr']")
 
-		statistic = content[3].inner_text.to_s
-		statistic = statistic[5, statistic.length]
+	title = page.css("[@class='cjrl_jdtop']").text	#标题
+	content = page.css("div[@class='cjrl_jdyh'] ul li")
 
-		#数据影响中有特殊字符(<, >), 使用正则匹配
-		regex = /\<div class="cjrl_jdnr"\>(.*?)\<\/div\>/
-		str = regex.match(interprete.to_s)
+	tregex = /span>(.*)<\/li>/
+	nextPubDate = htmlSpecial(content[0].css("span")[1].text)	#下次公布时间
+	dataAgent = htmlSpecial(tregex.match(content[1].to_s)[1])	#数据公布机构
+	frequency = htmlSpecial(tregex.match(content[2].to_s)[1])	#发布频率
+	statistic = htmlSpecial(tregex.match(content[3].to_s)[1])	#统计方法
 
-		datas = interprete.scan(regex)
+	#数据影响中有特殊字符(<, >), 使用正则匹配
+	rregex = /\<div class="cjrl_jdnr"\>(.*?)\<\/div\>/
 
-		dataEffect = datas.at(0)?datas.at(0).at(0).force_encoding("utf-8"):""
-		dataDefinition = datas.at(1)?datas.at(1).at(0).force_encoding("utf-8"):""
-		concernReason = datas.at(2)?datas.at(2).at(0).force_encoding("utf-8"):""
+	datas = page.to_s.scan(rregex)
+	jndrs = page.css("div[class='cjrl_jdnr']")
 
-		return Interpreter.new(title, nextPubDate, dataAgent, frequency, statistic, dataEffect, dataDefinition, concernReason)
-	end
+	dataEffect = htmlSpecial(jndrs[0].text())	#数据影响
+	dataDefinition = htmlSpecial(jndrs[1].text())	#数据释义
+	concernReason = htmlSpecial(jndrs[2].text())	#关注原因
 
-	return Interpreter.new()
+	return Interpreter.new(title, nextPubDate, dataAgent, frequency, statistic, dataEffect, dataDefinition, concernReason, graphData.to_s.gsub(/=>/, ":"), graphtitle)
 end
 
-def getGraphDatas(datanameid)
-	uri = URI.parse(URI.escape('http://rili.jin10.com/getdata.php?datanameid='+datanameid+'&date='+getTimestamp+'&type=1'))
-	http = Net::HTTP.new(uri.host, uri.port)
-	request = Net::HTTP::Get.new(uri.request_uri)  
-    response = http.request(request)  
+def htmlSpecial(str)
+	if !str
+		return str
+	end
 
-	#把response.body 转换成JSON对象。
-	result = JSON.parse(response.body).to_s
-	return result
+	return str.gsub(/'/, "''")
 end
 
 def checkExits(param, table)
