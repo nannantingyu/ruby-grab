@@ -181,14 +181,17 @@ def getInterprete(dataid)
 	title = page.css("[@class='cjrl_jdtop']").text	#标题
 	content = page.css("div[@class='cjrl_jdyh'] ul li")
 
-	tregex = /span>(.*)<\/li>/
+	tregex = /span>([\s\S]*)<\/li>/
 	nextPubDate = htmlSpecial(content[0].css("span")[1].text)	#下次公布时间
 	dataAgent = htmlSpecial(tregex.match(content[1].to_s)[1])	#数据公布机构
 	frequency = htmlSpecial(tregex.match(content[2].to_s)[1])	#发布频率
+	p tregex.match(content[3].to_s)
+	p tregex.match(content[3].to_s)[1]
+	puts ""
 	statistic = htmlSpecial(tregex.match(content[3].to_s)[1])	#统计方法
 
 	#数据影响中有特殊字符(<, >), 使用正则匹配
-	rregex = /\<div class="cjrl_jdnr"\>(.*?)\<\/div\>/
+	rregex = /\<div class="cjrl_jdnr"\>([\s\S]*?)\<\/div\>/
 
 	datas = page.to_s.scan(rregex)
 	jndrs = page.css("div[class='cjrl_jdnr']")
