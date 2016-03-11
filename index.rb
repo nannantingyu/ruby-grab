@@ -5,7 +5,7 @@ require 'open-uri'
 require 'date'
 require 'net/http'
 require 'json'
-require "mysql2"
+require 'mysql'
 
 def getInfluence(page, cls)
 	arr = []
@@ -27,25 +27,21 @@ PAGE_URL = "http://rili.jin10.com/index.php"
 FinanceData     = Struct.new(:time, :region, :quota, :weight, :former_value, :predict_value, :public_value, :interprete)
 FinanceEvent    = Struct.new(:time, :region, :city, :weight, :event)
 MarketHoliday   = Struct.new(:time, :region, :market, :holiday, :plan)
-Interpreter = Struct.new(:title, :nextPubDate, :dataAgent, :frequency, :statistic, :dataEffect, :dataDefinition, :concernReason, :graphData, :graphTitle)
+Interpreter = Struct.new(:title, :nextPubDate, :dataAgent, :frequency, :statistic, :dataEffect, :dataDefinition, :concernReason, :graphData, :graphTitle, :datanameid)
 
 #连接数据库本机：用户名：root 密码：sa 数据库：makedish 端口：3306  
 def setsql(sql)
-	client = Mysql2::Client.new(
-		:host => "192.168.99.199",
-		:username => "root",
-		:password => "123456",
-		:database => "cjrl",
-		:encoding => "utf8"
-	)
-
-	return client.query(sql);
+	db = Mysql.init  
+	db.options(Mysql::SET_CHARSET_NAME, 'utf8') 
+	dbh = Mysql.real_connect("192.168.99.199", "root", "123456","cjrl", 3306)
+	dbh.query("SET NAMES utf8")  
+	dbh.query(sql);
 end
- 
+
 def crawler(start)
 
 	#获取首页的影响
-	pageIndex = Nokogiri::HTML(open("http://www.jin10.com")) do |config|
+	pageIndex = Nokogiri::HTML(open("http://www.jin10.com"), nil, "utf-8") do |config|
 		config.noblanks.strict.nonet
 	end
 
@@ -58,7 +54,7 @@ def crawler(start)
 
 	url = PAGE_URL+"?date="+start.strftime("%Y%m%d")
 
-	page = Nokogiri::HTML(open(url)) do |config|
+	page = Nokogiri::HTML(open(url), nil, "utf-8") do |config|
 		config.noblanks.strict.nonet
 	end
 
@@ -105,25 +101,47 @@ def crawler(start)
 					influence = "wuyingxiang2"
 				end
 
-				dataid = /.*\/(\d+)/.match(f_data.interprete)[1]
+				# dataid = /.*\/(\d+)/.match(f_data.interprete).captures[0]
+				# daid = f_data.interprete.to_s.split('/')[2].to_s.to_i(10)
+				endIndex = f_data.interprete.length
+				daid = f_data.interprete[7..endIndex]
+				daid = "#{daid}"
+				dataid = daid
+
+				# dataid = '150609'
+
+				sql1 = "select * from jb46o_finance_data where dataid='#{daid}'"
+				puts sql1
+				ret = setsql(sql1);
+				ret.each do |row|
+					if row
+						p row
+					end
+				end
+
 
 				# setsql("delete from jb46o_interpreter where dataid=" + params["dataid"] + " and datanameid=" + params["datanameid"])
-				if checkExits(Hash["dataid"=>dataid], "jb46o_finance_data") < 1
+				if checkExits("dataid", '150609', "jb46o_finance_data") < 1
 					#插入经济数据
-					setsql("insert into jb46o_finance_data(dataid, date, time, region, quota, weight, former_value, predict_value, public_value, influnce) values("+dataid+",'"+start.strftime("%Y%m%d")+"','"+f_data.time+"','"+f_data.region+"','"+f_data.quota+"','"+f_data.weight+"','"+f_data.former_value+"','"+f_data.predict_value+"','"+f_data.public_value+"','"+influence+"'"+")")
+					setsql("insert into jb46o_finance_data(dataid, date, time, region, quota, weight, former_value, predict_value, public_value, influnce) values("<<dataid<<",'"<<start.strftime("%Y%m%d")<<"','"<<f_data.time<<"','"<<f_data.region<<"','"<<f_data.quota<<"','"<<f_data.weight<<"','"<<f_data.former_value<<"','"<<f_data.predict_value<<"','"<<f_data.public_value<<"','"<<influence<<"'"<<")")
 				else
 					#更新经济数据
-					setsql("update jb46o_finance_data set time='#{f_data.time}', region='#{f_data.region}', quota='#{f_data.quota}',weight='#{f_data.weight}',former_value='#{f_data.former_value}',predict_value='#{f_data.predict_value}',public_value='#{f_data.public_value}',influnce='#{influence}' where dataid=#{dataid};")
+					updateSql = "update jb46o_finance_data set time='#{f_data.time}', region='#{f_data.region}', quota='#{f_data.quota}',weight='#{f_data.weight}',former_value='#{f_data.former_value}',predict_value='#{f_data.predict_value}',public_value='#{f_data.public_value}'"
+					if !influence
+						updateSql = updateSql << ",influnce='#{influence}'"
+					end
+
+					updateSql = updateSql << " where dataid=#{dataid};"
+					setsql(updateSql)
 				end
 
 				#插入解读
 				interpreter = getInterprete(dataid)
-				# puts interpreter.dataDefinition
-				if checkExits(Hash["dataid"=>dataid], "jb46o_interpreter") < 1
-					setsql("insert into jb46o_interpreter values(null, " << dataid.to_s << ",'" << interpreter.title.to_s << "','" << interpreter.nextPubDate.to_s << "','" << interpreter.dataAgent.to_s << "','" << interpreter.frequency.to_s << "','" << interpreter.statistic.to_s << "','" << interpreter.dataEffect << "','" << interpreter.dataDefinition << "','" << interpreter.concernReason << "','" << interpreter.graphData.to_s << "','" << interpreter.graphTitle << "');")
-				else
-					setsql("update jb46o_interpreter set title='#{interpreter.title}', nextPubDate='#{interpreter.nextPubDate}', dataAgent='#{interpreter.dataAgent}', frequency='#{interpreter.frequency}', statistic='#{interpreter.statistic}', dataeffect='#{interpreter.dataEffect}', datadefinition='#{interpreter.dataDefinition}', concernreason='#{interpreter.concernReason}', graphdata='#{interpreter.graphData}', graphtitle='#{interpreter.graphTitle}' where dataid=#{dataid};")
-				end
+				# if checkExits(Hash["dataid"=>dataid], "jb46o_interpreter") < 1
+				# 	setsql("insert into jb46o_interpreter values(null, " << dataid.to_s << "," << interpreter.datanameid << ",'" << interpreter.title.to_s << "','" << interpreter.nextPubDate.to_s << "','" << interpreter.dataAgent.to_s << "','" << interpreter.frequency.to_s << "','" << interpreter.statistic.to_s << "','" << interpreter.dataEffect << "','" << interpreter.dataDefinition << "','" << interpreter.concernReason << "','" << interpreter.graphData.to_s << "','" << interpreter.graphTitle << "');")
+				# else
+				# 	setsql("update jb46o_interpreter set datanameid='#{interpreter.datanameid}', title='#{interpreter.title}', nextPubDate='#{interpreter.nextPubDate}', dataAgent='#{interpreter.dataAgent}', frequency='#{interpreter.frequency}', statistic='#{interpreter.statistic}', dataeffect='#{interpreter.dataEffect}', datadefinition='#{interpreter.dataDefinition}', concernreason='#{interpreter.concernReason}', graphdata='#{interpreter.graphData}', graphtitle='#{interpreter.graphTitle}' where dataid=#{dataid};")
+				# end
 			end
 		end
 
@@ -176,6 +194,9 @@ def getInterprete(dataid)
 	graphtitleReg = /var\s+mytitle\s+=\s+"(.*)"/
 	graphtitle = graphtitleReg.match(pageIndex.to_s)[1]
 
+	datanameidRegex = /var\s+datanameid\s+=\s+"(.+)";/
+	datanameid = datanameidRegex.match(pageIndex.to_s)[1]
+
 	page = pageIndex.css("div[@id='nr']")
 
 	title = page.css("[@class='cjrl_jdtop']").text	#标题
@@ -185,9 +206,6 @@ def getInterprete(dataid)
 	nextPubDate = htmlSpecial(content[0].css("span")[1].text)	#下次公布时间
 	dataAgent = htmlSpecial(tregex.match(content[1].to_s)[1])	#数据公布机构
 	frequency = htmlSpecial(tregex.match(content[2].to_s)[1])	#发布频率
-	p tregex.match(content[3].to_s)
-	p tregex.match(content[3].to_s)[1]
-	puts ""
 	statistic = htmlSpecial(tregex.match(content[3].to_s)[1])	#统计方法
 
 	#数据影响中有特殊字符(<, >), 使用正则匹配
@@ -200,7 +218,7 @@ def getInterprete(dataid)
 	dataDefinition = htmlSpecial(jndrs[1].text())	#数据释义
 	concernReason = htmlSpecial(jndrs[2].text())	#关注原因
 
-	return Interpreter.new(title, nextPubDate, dataAgent, frequency, statistic, dataEffect, dataDefinition, concernReason, graphData.to_s.gsub(/=>/, ":"), graphtitle)
+	return Interpreter.new(title, nextPubDate, dataAgent, frequency, statistic, dataEffect, dataDefinition, concernReason, graphData.to_s.gsub(/=>/, ":"), graphtitle, datanameid)
 end
 
 def htmlSpecial(str)
@@ -211,22 +229,23 @@ def htmlSpecial(str)
 	return str.gsub(/'/, "''")
 end
 
-def checkExits(param, table)
-	keys = param.keys
-	where = ''
-	for i in 0..keys.length-2
-		where += keys[i] + "='" + param[keys[i]] + "' and "
-	end
-	where << keys[keys.length-1].to_s + "='" + param[keys[keys.length-1]] + "';"
+def checkExits(key, val, table)
+	where = key << '=' << val.to_s
 
-	result = setsql("select count(*) as count from " + table + " where " + where)
+	sql = "select * from " << table << " where " << where
 
-	result.each do |res|
-		return res["count"]
+	result = setsql(sql)
+
+	result.each do |row|
+		return 0
 	end
+
+	return 0
 end
 
 
 now = Time.now
 current =  Date.new(now.year, now.month, now.day)
 crawler(current)
+
+checkExits("dataid", '150609', "jb46o_finance_data")
