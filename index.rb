@@ -5,7 +5,7 @@ require 'open-uri'
 require 'date'
 require 'net/http'
 require 'json'
-require 'mysql'
+require 'mysql2'
 
 def getInfluence(page, cls)
 	arr = []
@@ -30,12 +30,24 @@ MarketHoliday   = Struct.new(:time, :region, :market, :holiday, :plan)
 Interpreter = Struct.new(:title, :nextPubDate, :dataAgent, :frequency, :statistic, :dataEffect, :dataDefinition, :concernReason, :graphData, :graphTitle, :datanameid)
 
 #连接数据库本机：用户名：root 密码：sa 数据库：makedish 端口：3306  
+# def setsql(sql)
+# 	db = Mysql.init  
+# 	db.options(Mysql::SET_CHARSET_NAME, 'utf8') 
+# 	dbh = Mysql.real_connect("192.168.99.199", "root", "123456","cjrl", 3306)
+# 	dbh.query("SET NAMES utf8")  
+# 	result = dbh.query(sql)
+# 	return result
+# end
+
 def setsql(sql)
-	db = Mysql.init  
-	db.options(Mysql::SET_CHARSET_NAME, 'utf8') 
-	dbh = Mysql.real_connect("192.168.99.199", "root", "123456","cjrl", 3306)
-	dbh.query("SET NAMES utf8")  
-	dbh.query(sql);
+	client = Mysql2::Client.new(
+		:host     => '192.168.99.199', # 主机
+		:username => 'root',      # 用户名
+		:password => '123456',    # 密码
+		:database => 'cjrl',      # 数据库
+		:encoding => 'utf8'       # 编码
+	)
+	return client.query(sql)
 end
 
 def crawler(start)
@@ -72,7 +84,6 @@ def crawler(start)
 		pre_region = ''
 
 		if length>1
-			setsql('DELETE FROM jb46o_finance_data where date="'+start.strftime("%Y%m%d")+'"')
 			for i in 0..length do
 				colums = rows[i].css("td")
 				rs = colums[0]['rowspan']
@@ -101,33 +112,15 @@ def crawler(start)
 					influence = "wuyingxiang2"
 				end
 
-				# dataid = /.*\/(\d+)/.match(f_data.interprete).captures[0]
-				# daid = f_data.interprete.to_s.split('/')[2].to_s.to_i(10)
-				endIndex = f_data.interprete.length
-				daid = f_data.interprete[7..endIndex]
-				daid = "#{daid}"
-				dataid = daid
+				dataid = f_data.interprete.to_s.split('/')[2].to_s
 
-				# dataid = '150609'
-
-				sql1 = "select * from jb46o_finance_data where dataid='#{daid}'"
-				puts sql1
-				ret = setsql(sql1);
-				ret.each do |row|
-					if row
-						p row
-					end
-				end
-
-
-				# setsql("delete from jb46o_interpreter where dataid=" + params["dataid"] + " and datanameid=" + params["datanameid"])
-				if checkExits("dataid", '150609', "jb46o_finance_data") < 1
+				if checkExits("dataid", dataid, "jb46o_finance_data") < 1
 					#插入经济数据
 					setsql("insert into jb46o_finance_data(dataid, date, time, region, quota, weight, former_value, predict_value, public_value, influnce) values("<<dataid<<",'"<<start.strftime("%Y%m%d")<<"','"<<f_data.time<<"','"<<f_data.region<<"','"<<f_data.quota<<"','"<<f_data.weight<<"','"<<f_data.former_value<<"','"<<f_data.predict_value<<"','"<<f_data.public_value<<"','"<<influence<<"'"<<")")
 				else
 					#更新经济数据
 					updateSql = "update jb46o_finance_data set time='#{f_data.time}', region='#{f_data.region}', quota='#{f_data.quota}',weight='#{f_data.weight}',former_value='#{f_data.former_value}',predict_value='#{f_data.predict_value}',public_value='#{f_data.public_value}'"
-					if !influence
+					if influence != ''
 						updateSql = updateSql << ",influnce='#{influence}'"
 					end
 
@@ -137,11 +130,11 @@ def crawler(start)
 
 				#插入解读
 				interpreter = getInterprete(dataid)
-				# if checkExits(Hash["dataid"=>dataid], "jb46o_interpreter") < 1
-				# 	setsql("insert into jb46o_interpreter values(null, " << dataid.to_s << "," << interpreter.datanameid << ",'" << interpreter.title.to_s << "','" << interpreter.nextPubDate.to_s << "','" << interpreter.dataAgent.to_s << "','" << interpreter.frequency.to_s << "','" << interpreter.statistic.to_s << "','" << interpreter.dataEffect << "','" << interpreter.dataDefinition << "','" << interpreter.concernReason << "','" << interpreter.graphData.to_s << "','" << interpreter.graphTitle << "');")
-				# else
-				# 	setsql("update jb46o_interpreter set datanameid='#{interpreter.datanameid}', title='#{interpreter.title}', nextPubDate='#{interpreter.nextPubDate}', dataAgent='#{interpreter.dataAgent}', frequency='#{interpreter.frequency}', statistic='#{interpreter.statistic}', dataeffect='#{interpreter.dataEffect}', datadefinition='#{interpreter.dataDefinition}', concernreason='#{interpreter.concernReason}', graphdata='#{interpreter.graphData}', graphtitle='#{interpreter.graphTitle}' where dataid=#{dataid};")
-				# end
+				if checkExits("dataid", dataid, "jb46o_interpreter") < 1
+					setsql("insert into jb46o_interpreter values(null, " << dataid.to_s << "," << interpreter.datanameid << ",'" << interpreter.title.to_s << "','" << interpreter.nextPubDate.to_s << "','" << interpreter.dataAgent.to_s << "','" << interpreter.frequency.to_s << "','" << interpreter.statistic.to_s << "','" << interpreter.dataEffect << "','" << interpreter.dataDefinition << "','" << interpreter.concernReason << "','" << interpreter.graphData.to_s << "','" << interpreter.graphTitle << "');")
+				else
+					setsql("update jb46o_interpreter set datanameid='#{interpreter.datanameid}', title='#{interpreter.title}', nextPubDate='#{interpreter.nextPubDate}', dataAgent='#{interpreter.dataAgent}', frequency='#{interpreter.frequency}', statistic='#{interpreter.statistic}', dataeffect='#{interpreter.dataEffect}', datadefinition='#{interpreter.dataDefinition}', concernreason='#{interpreter.concernReason}', graphdata='#{interpreter.graphData}', graphtitle='#{interpreter.graphTitle}' where dataid=#{dataid};")
+				end
 			end
 		end
 
@@ -162,7 +155,6 @@ def crawler(start)
 		rows =  f_rest_seg.css("tr")
 
 		setsql('DELETE FROM jb46o_market_holiday where date="'+start.strftime("%Y%m%d")+'"')
-
 		rows.each do | row |
 			colums = row.css("td")
 			rs = colums[0]['colspan']
@@ -230,22 +222,15 @@ def htmlSpecial(str)
 end
 
 def checkExits(key, val, table)
-	where = key << '=' << val.to_s
+	where = key + "='" + val.to_s + "'"
 
 	sql = "select * from " << table << " where " << where
-
 	result = setsql(sql)
 
-	result.each do |row|
-		return 0
-	end
-
-	return 0
+	return result.count
 end
 
 
 now = Time.now
 current =  Date.new(now.year, now.month, now.day)
 crawler(current)
-
-checkExits("dataid", '150609', "jb46o_finance_data")
